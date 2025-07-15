@@ -286,15 +286,15 @@ def plot_interactions(selected_types, output_filename, plot_title):
         title_fontsize=12
     )
 
-    plt.xlabel("Nucleotide #", fontsize=14, fontweight="bold")
-    plt.ylabel("Energy (kcal/mol)", fontsize=14, fontweight="bold")
+    plt.xlabel("Nucleotide #", fontsize=20, fontweight="bold")
+    plt.ylabel("Energy (kcal/mol)", fontsize=20, fontweight="bold")
     #plt.title(plot_title, fontsize=16, fontweight="bold")
     plt.grid(False)
 
     # Set X ticks for all unique residues
     all_residues = np.sort(table_df['R2'].unique())
     plt.xticks(all_residues)
-    plt.tick_params(axis='both', labelsize=14)
+    plt.tick_params(axis='both', labelsize=16)
 
     plt.tight_layout()
     plt.savefig(f"{output_filename}.jpg", dpi=300)
@@ -338,4 +338,3 @@ plt.close(fig_table)
 
 print("Saved plots as LIE_analysis_all.jpg, LIE_analysis_elec_vdw.jpg, LIE_analysis_total.jpg")
 print("Saved tables as LIE_summary_table.csv, LIE_summary_table.html, LIE_summary_table.jpg")
-
