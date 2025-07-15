@@ -148,7 +148,7 @@ ax_pop.set_xlabel("QCy(MeBT)₃ conformer", fontweight='bold', fontsize=14)
 ax_pop.set_ylabel("Relative Population (%)", fontweight='bold', color='green', fontsize=14)
 ax_pop.tick_params(axis='y', labelcolor='green')
 ax_pop.set_xticks(x)
-ax_pop.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=14)
+ax_pop.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=14)  ##Si no hay cambio conformacional, aquí -> fontweight="bold"
 ax_pop.grid(False)
 
 # --- Ocultar el borde inferior de la gráfica superior y el borde superior de la gráfica inferior ---
@@ -168,7 +168,7 @@ plt.bar(x, populations, yerr=population_errors, capsize=5, color=colors_populati
 plt.xlabel("QCy(MeBT)₃ conformer", fontweight="bold")
 plt.ylabel("Relative Population (%)", fontweight="bold")
 plt.title("Relative Population", fontweight="bold")
-plt.xticks(x, x_labels, rotation=45, ha='right', fontsize=14)
+plt.xticks(x, x_labels, rotation=45, ha='right', fontsize=14) ##Si no hay cambio conformacional, aquí -> fontweight="bold"
 plt.tight_layout()
 plt.savefig("population_plot.png", dpi=300)
 plt.show()
@@ -179,7 +179,7 @@ ax.add_collection(LineCollection(segments, colors=colors, linewidth=2))
 ax.scatter(x, energies, color='red', zorder=3, label='Energy Points')
 ax.errorbar(x, energies, yerr=energy_errors, fmt='none', ecolor='gray', capsize=5, elinewidth=1, zorder=2)
 ax.set_xticks(x)
-ax.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=14)
+ax.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=14) ##Si no hay cambio conformacional, aquí -> fontweight="bold"
 ax.set_xlabel("QCy(MeBT)₃ conformer", fontweight='bold')
 ax.set_ylabel(f"Energy ({units})", fontweight='bold')
 ax.set_title("Energy Comparison with Gradient Line and Error Bars")
