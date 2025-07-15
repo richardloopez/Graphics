@@ -16,7 +16,7 @@ def transformar_etiqueta(nombre):
         origen = origen.strip()
         destino = destino.strip()
         # Flecha unicode y destino en negrita LaTeX
-        return rf"{origen} $\rightarrow$ $\mathbf{{{destino}}}$"
+        return rf"$_{{{origen} \rightarrow}}$$\mathbf{{{destino}}}$"
     else:
         return nombre
 
