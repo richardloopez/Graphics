@@ -1,3 +1,75 @@
+"""
+Boltzmann and LIE Interaction Plotter
+-------------------------------------
+
+This script automatically reads, processes, and plots LIE energy data for molecular dynamics conformers.  
+**File and variable naming, docstrings, and comments are in English for GitHub publication.**
+
+================================================================================
+INPUT REQUIREMENTS
+================================================================================
+- **Working directory:** Place all .csv input files in the same folder as this script, or set the folder path via os.chdir().
+- **Input .csv filenames:** 
+    - Filenames must start with a prefix `P<number>` (e.g., `P1`, `P2`, etc.), a space, then any text.
+    - To indicate a transition, use `-+`, e.g.:
+         - `P1 AAB -+ CDB.csv`, `P2 EEA -+ ZZZ.csv`
+    - The numeric prefix defines figure and legend order and does *not* appear in the legend.
+    - If no prefix is present, files are listed last and sorted alphabetically.
+
+- **CSV columns required:**
+    - `EELEC_AV`         (float): Electrostatic mean energy
+    - `EELEC_STDDEV`     (float): Electrostatic std. dev.
+    - `EVDW_AV`          (float): van der Waals mean energy
+    - `EVDW_STDDEV`      (float): van der Waals std. dev.
+    - `R1` and `R2`      (int or empty): residue number(s) (if omitted, extraction from filename not guaranteed)
+    - Recommendations: Provide at least columns above. Extra columns are unused.
+
+    Example:
+        EELEC_AV,EELEC_STDDEV,EVDW_AV,EVDW_STDDEV,R1,R2
+        -12.1,0.7,-5.3,0.5,23,44
+        ...
+
+================================================================================
+WHAT THE CODE DOES
+================================================================================
+1. **File Gathering & Order**
+   - Finds all `.csv` files in the working folder, ordering them by the number after the `P` prefix (`P1` before `P2`, ...).
+
+2. **Legend Transformation**
+   - Each filename is processed for:
+        - Removing the `P<number>` order prefix.
+        - Transforming `-+` into a right arrow (`→`) and making the destination (after the arrow) bold in the legend.
+
+3. **Data Processing**
+   - Reads means/stddev from each file for TOTAL, EELEC, and EVDW energies.
+   - Computes `TOTAL_AV = EELEC_AV + EVDW_AV`
+   - Computes `TOTAL_STDDEV` as sqrt of squared stddevs.
+
+4. **Graph Generation**
+   - Produces one line per conformer per plot, colored and labeled by simulation.
+   - If three or fewer points are present, no smoothing spline is used.
+   - Produces three plots: 
+        - All contributions (`TOTAL`, `EELEC`, `EVDW`)
+        - Components only (`EELEC`, `EVDW`)
+        - Total only (`TOTAL`)
+   - Legends are ordered by order in filename, labels as described above.
+
+5. **Table Generation**
+   - Saves a concatenated summary table in CSV, HTML, and JPG.
+
+================================================================================
+OUTPUTS
+================================================================================
+- `LIE_analysis_all.jpg`     : Plot of all energy components per simulation
+- `LIE_analysis_elec_vdw.jpg`: Plot of electrostatic and vdW only
+- `LIE_analysis_total.jpg`   : Plot of total only
+- `LIE_summary_table.csv`    : Combined results table
+- `LIE_summary_table.html`   : HTML table (for documentation or web)
+- `LIE_summary_table.jpg`    : Table as image
+
+================================================================================
+"""
+
 import os
 import glob
 import pandas as pd
@@ -6,18 +78,17 @@ import matplotlib.pyplot as plt
 import itertools
 from matplotlib.lines import Line2D
 from scipy.interpolate import make_interp_spline
+import re
 
 # ==========================
-# Configuration and Settings
+# Configuration
 # ==========================
 
-# Set working directory to the folder containing your CSVs
-os.chdir(r"D:\Actuales\QCY\FINAL_LIE\Magic")  # <-- Change as needed
+# Set working directory (change this as appropriate)
+os.chdir(r"D:\Actuales\QCY\FINAL_LIE\Magic")
 
-# Show error bars in the plots
 SHOW_ERROR_BARS = False
 
-# Line styles for each data type
 LINE_STYLES = {
     "TOTAL": {"linestyle": "-", "marker": "o", "label": "TOTAL"},
     "EELEC": {"linestyle": "--", "marker": "s", "label": "EELEC"},
@@ -25,7 +96,6 @@ LINE_STYLES = {
 }
 DATA_TYPES = ["TOTAL", "EELEC", "EVDW"]
 
-# Color palette for different simulations
 COLOR_LIST = [
     "#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd",
     "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
@@ -35,56 +105,72 @@ COLOR_LIST = [
 # Helper Functions
 # ==========================
 
-def transform_legend_label(filename_base):
+def extract_file_order_and_clean(filename_base):
     """
-    If the filename contains '-+', replace it with a right arrow and
-    display the part after the arrow in bold (LaTeX mathtext).
+    Extracts order from a filename starting with 'P<number> '.
+    Returns (order_number, filename_wo_prefix).
+    Files without prefix are returned as order 9999 (sorted at the end).
     """
-    if "-+" in filename_base:
-        left, right = filename_base.split("-+", 1)
+    match = re.match(r"P(\d+)\s+(.*)", filename_base)
+    if match:
+        return int(match.group(1)), match.group(2)
+    return 9999, filename_base
+
+def transform_legend_label(clean_filename):
+    """
+    If '-+' is present, formats with a right arrow and makes the right side bold.
+    """
+    if "-+" in clean_filename:
+        left, right = clean_filename.split("-+", 1)
         left = left.strip()
         right = right.strip()
-        # Use LaTeX for arrow and bold
-        return rf"$_{{{left} \rightarrow}}$$\mathbf{{{right}}}$"
+        return rf"{left} $\rightarrow$ $\mathbf{{{right}}}$"
     else:
-        return filename_base
+        return clean_filename
 
 # ==========================
 # Data Loading and Processing
 # ==========================
 
-# Find all CSV files in the current directory
-csv_files = sorted(glob.glob("*.csv"))
+# Collect .csv files and sort using the P<number> prefix, then alphabetically
+csv_file_info = []
+for csvfile in glob.glob("*.csv"):
+    filename_base = os.path.splitext(os.path.basename(csvfile))[0]
+    order, cleaned = extract_file_order_and_clean(filename_base)
+    csv_file_info.append((order, cleaned, csvfile))
+
+csv_file_info.sort(key=lambda x: (x[0], x[1]))
+csv_files = [item[2] for item in csv_file_info]
+legend_names = [item[1] for item in csv_file_info]
+
 if not csv_files:
     raise FileNotFoundError("No CSV files found in the current directory.")
 
 all_tables = []
 
-for csv_file in csv_files:
+for idx, csv_file in enumerate(csv_files):
     df = pd.read_csv(csv_file)
     base_name = os.path.basename(csv_file)
     df['filename'] = base_name
 
     # Add total energy columns
     df['TOTAL_AV'] = df['EELEC_AV'] + df['EVDW_AV']
-    df['TOTAL_STDDEV'] = np.sqrt(df['EELEC_STDDEV']**2 + df['EVDW_STDDEV']**2)
+    df['TOTAL_STDDEV'] = np.sqrt(df['EELEC_STDDEV'] ** 2 + df['EVDW_STDDEV'] ** 2)
 
-    # Ensure R1 and R2 columns exist (try to extract from filename if not)
+    # Ensure presence of R1 and R2 columns, or fill with empty string
     if 'R1' not in df.columns or 'R2' not in df.columns:
-        import re
-        match = re.match(r"lie_LR(\d+)_RR(\d+)\.dat", base_name)
-        if match:
-            df['R1'] = int(match.group(1))
-            df['R2'] = int(match.group(2))
+        m = re.match(r"lie_LR(\d+)_RR(\d+)\.dat", base_name)
+        if m:
+            df['R1'] = int(m.group(1))
+            df['R2'] = int(m.group(2))
         else:
             df['R1'] = ''
             df['R2'] = ''
     all_tables.append(df)
 
-# Combine all tables into a single DataFrame
+# Build the concatenated summary table
 table_df = pd.concat(all_tables, ignore_index=True)
 
-# Reorder and rename columns for clarity
 COLUMN_MAP = {
     'filename': 'filename',
     'R1': 'R1',
@@ -111,18 +197,20 @@ table_df = table_df.rename(columns=COLUMN_MAP)
 
 def plot_interactions(selected_types, output_filename, plot_title):
     """
-    Plots the selected energy types for all simulations found in the folder.
+    Plots selected energy types for all simulations found in the folder.
     Each simulation gets a different color and a custom legend label.
+    Legends are ordered by the prefixed order in filenames.
     """
     plt.figure(figsize=(12, 7))
     color_cycle = itertools.cycle(COLOR_LIST)
     color_legend_handles = []
 
-    for csv_file in csv_files:
-        base_name = os.path.basename(csv_file)
-        df = table_df[table_df['filename'] == base_name]
+    for idx, csv_file in enumerate(csv_files):
+        base_name = os.path.splitext(os.path.basename(csv_file))[0]
+        legend_base = legend_names[idx]
+        legend_label = transform_legend_label(legend_base)
+        df = table_df[table_df['filename'] == os.path.basename(csv_file)]
         color = next(color_cycle)
-        legend_label = transform_legend_label(os.path.splitext(base_name)[0])
         color_legend_handles.append(
             Line2D([0], [0], color=color, lw=3, label=legend_label)
         )
@@ -133,6 +221,7 @@ def plot_interactions(selected_types, output_filename, plot_title):
             yerr = df[f"{dtype}_STDDEV (kcal/mol)"].values
             x = np.array(residues)
             y = np.array(y)
+            # Use spline interpolation only for >3 points
             if len(x) > 3:
                 x_smooth = np.linspace(x.min(), x.max(), 200)
                 spl = make_interp_spline(x, y, k=3)
@@ -150,7 +239,6 @@ def plot_interactions(selected_types, output_filename, plot_title):
                     linestyle=LINE_STYLES[dtype]["linestyle"],
                     alpha=0.7
                 )
-            # Plot points and error bars (optional)
             if SHOW_ERROR_BARS:
                 plt.errorbar(
                     x, y, yerr=yerr,
@@ -172,7 +260,7 @@ def plot_interactions(selected_types, output_filename, plot_title):
                     alpha=0.9
                 )
 
-    # Style legend (data types)
+    # Energy type legend
     style_legend_handles = [
         Line2D([0], [0], color='black',
                linestyle=LINE_STYLES[t]["linestyle"],
@@ -188,7 +276,7 @@ def plot_interactions(selected_types, output_filename, plot_title):
         title_fontsize=12
     )
     plt.gca().add_artist(first_legend)
-    # Simulation legend (with custom labels)
+    # Simulation legend
     legend2 = plt.legend(
         handles=color_legend_handles,
         title="Simulation",
@@ -206,13 +294,11 @@ def plot_interactions(selected_types, output_filename, plot_title):
     # Set X ticks for all unique residues
     all_residues = np.sort(table_df['R2'].unique())
     plt.xticks(all_residues)
-
-    # Aumentar tamaño de los ticks
     plt.tick_params(axis='both', labelsize=14)
 
     plt.tight_layout()
     plt.savefig(f"{output_filename}.jpg", dpi=300)
-    # Optionally, save as HTML with mpld3
+    # Optional: HTML interactive version
     try:
         import mpld3
         mpld3.save_html(plt.gcf(), f"{output_filename}.html")
