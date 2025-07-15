@@ -1,0 +1,188 @@
+import csv
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
+import numpy as np
+
+# --- Función para transformar etiquetas ---
+def transformar_etiqueta(nombre):
+    """
+    Si la etiqueta contiene '->', convierte la flecha en '→' y pone en negrita
+    la pose de llegada (lo que va después de la flecha).
+    """
+    if '->' in nombre:
+        origen, destino = nombre.split('->', 1)
+        origen = origen.strip()
+        destino = destino.strip()
+        # Flecha unicode y destino en negrita LaTeX
+        return rf"{origen} $\rightarrow$ $\mathbf{{{destino}}}$"
+    else:
+        return nombre
+
+# --- Cargar CSV y validar estructura ---
+
+csv_path = input("Paste the full path of the .csv with the data: ").strip('"')
+
+energy_dictionary = {}
+population_dictionary = {}
+
+with open(csv_path, mode="r", encoding="utf8") as archive:
+    content = archive.readlines()
+    first_line_splitted = [place.strip() for place in content[0].split(",")]
+
+    # Structure checks
+    checks = [
+        first_line_splitted[0] == "Name",
+        "Energy_" in first_line_splitted[1],
+        "Energy_Error_" in first_line_splitted[2],
+        first_line_splitted[3] == "Relative_Population",
+        first_line_splitted[4] == "Relative_Population_Error"
+    ]
+
+    # Validate header structure
+    if all(checks):
+        print("The .csv structure seems to be correct.")
+    else:
+        raise ValueError("""
+The .csv structure is incorrect. Please ensure the header is exactly:
+"Name,Energy_{units},Energy_Error_{units},Relative_Population,Relative_Population_Error"
+""")
+
+    # Extract and validate units
+    units_from_energy = first_line_splitted[1].split("_")[1]
+    units_from_energy_error = first_line_splitted[2].split("_")[2]
+
+    if units_from_energy == units_from_energy_error:
+        units = units_from_energy
+        print(f"Units detected: {units}")
+    else:
+        raise ValueError("Mismatch between Energy and Energy_Error units. Please fix the header.")
+
+# --- Leer datos y crear diccionarios ---
+
+with open(csv_path, mode="r", encoding="utf-8") as archive:
+    reader = csv.DictReader(archive)
+    for line in reader:
+        energy_dictionary[line["Name"]] = [line[f"Energy_{units}"], line[f"Energy_Error_{units}"]]
+        population_dictionary[line["Name"]] = [line["Relative_Population"], line["Relative_Population_Error"]]
+
+# --- Crear DataFrames y estilos de tablas ---
+
+df_energy = pd.DataFrame.from_dict(
+    energy_dictionary, 
+    orient='index', 
+    columns=[f'Energy ({units})', f'Energy Error ({units})']
+)
+
+df_population = pd.DataFrame.from_dict(
+    population_dictionary, 
+    orient='index', 
+    columns=['Relative Population (%)', 'Relative Population Error']
+)
+
+def table_style(df):
+    return df.style.set_table_styles(
+        [
+            {'selector': 'thead th', 'props': [('background-color', '#f0f0f0'), ('font-weight', 'bold'), ('text-align', 'center')]},
+            {'selector': 'tbody td', 'props': [('text-align', 'center'), ('font-size', '12pt')]},
+            {'selector': 'table', 'props': [('border-collapse', 'collapse'), ('width', '100%')]},
+            {'selector': 'tbody tr:nth-child(even)', 'props': [('background-color', '#f9f9f9')]},
+            {'selector': 'tbody tr:nth-child(odd)', 'props': [('background-color', 'white')]},
+            {'selector': 'td, th', 'props': [('border', '1px solid #ddd'), ('padding', '8px')]},
+        ]
+    )
+
+styled_df_energy = table_style(df_energy)
+styled_df_population = table_style(df_population)
+
+# Display both tables in Jupyter
+from IPython.display import display
+display(styled_df_energy)
+display(styled_df_population)
+
+# Save tables as HTML
+styled_df_energy.to_html("energy_table.html")
+styled_df_population.to_html("population_table.html")
+
+# --- Preparar datos para gráficas ---
+
+sorted_names = sorted(energy_dictionary.keys(), key=lambda x: float(energy_dictionary[x][0]))
+x = np.arange(len(sorted_names))
+
+energies = [float(energy_dictionary[name][0]) for name in sorted_names]
+energy_errors = [float(energy_dictionary[name][1]) for name in sorted_names]
+populations = [float(population_dictionary[name][0]) for name in sorted_names]
+population_errors = [float(population_dictionary[name][1]) for name in sorted_names]
+
+colors_population = plt.cm.Greens(np.linspace(0.9, 0.3, len(sorted_names)))
+
+# --- Generar etiquetas transformadas ---
+x_labels = [transformar_etiqueta(name) for name in sorted_names]
+
+# ---- 1. Gráfica combinada: dos subplots alineados ----
+fig, (ax_energy, ax_pop) = plt.subplots(
+    2, 1, 
+    figsize=(10, 8), 
+    sharex=True, 
+    gridspec_kw={'height_ratios': [1, 1.2]}
+)
+
+# --- Arriba: Energía (línea degradada + puntos) ---
+points = np.array([x, energies]).T.reshape(-1, 1, 2)
+segments = np.concatenate([points[:-1], points[1:]], axis=1)
+cmap = plt.get_cmap('Blues_r')
+colors = cmap(np.linspace(0.1, 0.7, len(segments)))
+lc = LineCollection(segments, colors=colors, linewidth=2, zorder=2)
+ax_energy.add_collection(lc)
+ax_energy.scatter(x, energies, color='red', zorder=3, label='Energy Points')
+ax_energy.errorbar(x, energies, yerr=energy_errors, fmt='none', ecolor='gray', capsize=5, elinewidth=1, zorder=1)
+ax_energy.set_ylabel(f"Energy ({units})", fontweight='bold', color='blue', fontsize=14)
+ax_energy.tick_params(axis='y', labelcolor='blue', labelsize=12)
+#ax_energy.set_title("Energy (top) and Population (bottom) per Structure | H2O", fontweight="bold", fontsize=16)
+ax_energy.grid(False)
+
+# --- Abajo: Población (barras) ---
+ax_pop.bar(x, populations, yerr=population_errors, capsize=5, color=colors_population, edgecolor='black')
+ax_pop.set_xlabel("QCy(MeBT)₃ conformer", fontweight='bold', fontsize=14)
+ax_pop.set_ylabel("Relative Population (%)", fontweight='bold', color='green', fontsize=14)
+ax_pop.tick_params(axis='y', labelcolor='green')
+ax_pop.set_xticks(x)
+ax_pop.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=14)
+ax_pop.grid(False)
+
+# --- Ocultar el borde inferior de la gráfica superior y el borde superior de la gráfica inferior ---
+ax_energy.spines['bottom'].set_visible(False)
+ax_pop.spines['top'].set_visible(False)
+ax_energy.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+
+plt.tight_layout()
+plt.savefig("combined_subplot.png", dpi=300)
+plt.show()
+
+# ---- 2. Gráficas sueltas (siguen estando disponibles) ----
+
+# Gráfica solo de poblaciones
+plt.figure(figsize=(9, 6))
+plt.bar(x, populations, yerr=population_errors, capsize=5, color=colors_population, edgecolor='black')
+plt.xlabel("QCy(MeBT)₃ conformer", fontweight="bold")
+plt.ylabel("Relative Population (%)", fontweight="bold")
+plt.title("Relative Population", fontweight="bold")
+plt.xticks(x, x_labels, rotation=45, ha='right', fontsize=14)
+plt.tight_layout()
+plt.savefig("population_plot.png", dpi=300)
+plt.show()
+
+# Gráfica solo de energías
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.add_collection(LineCollection(segments, colors=colors, linewidth=2))
+ax.scatter(x, energies, color='red', zorder=3, label='Energy Points')
+ax.errorbar(x, energies, yerr=energy_errors, fmt='none', ecolor='gray', capsize=5, elinewidth=1, zorder=2)
+ax.set_xticks(x)
+ax.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=14)
+ax.set_xlabel("QCy(MeBT)₃ conformer", fontweight='bold')
+ax.set_ylabel(f"Energy ({units})", fontweight='bold')
+ax.set_title("Energy Comparison with Gradient Line and Error Bars")
+plt.tight_layout()
+plt.savefig("energy_plot.png", dpi=300)
+plt.show()
