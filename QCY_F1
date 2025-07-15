@@ -217,22 +217,22 @@ def plot_conformation_evolution(
     xticks = [0] + [frame_to_ns(int(round(ns_tick * num_frames / md_time_ns)), md_time_ns, num_frames) for ns_tick in [50, 100, 150, 200, 250, 300]]
     xticklabels = ['0'] + [str(int(t)) for t in [50, 100, 150, 200, 250, 300]]
     ax.set_xticks(xticks)
-    ax.set_xticklabels(xticklabels, fontsize=11)
-    ax.tick_params(axis='both', which='major', labelsize=11)
+    ax.set_xticklabels(xticklabels, fontsize=18)
+    ax.tick_params(axis='both', which='major', labelsize=18)
 
     # Etiquetas y título
-    ax.set_xlabel('Simulation Time (ns)', fontsize=14, fontweight='bold')
-    ax.set_ylabel('QCy(MeBT)₃ conformer', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Simulation Time (ns)', fontsize=20, fontweight='bold')
+    ax.set_ylabel('QCy(MeBT)₃ conformer', fontsize=20, fontweight='bold')
     #ax.set_title('Conformation Evolution per Simulation Time', fontsize=16, fontweight='bold')
 
     plt.subplots_adjust(left=0.25, right=0.97, top=0.9, bottom=0.1)
-    ax.yaxis.set_label_coords(-0.11, 0.5)
+    ax.yaxis.set_label_coords(-0.13, 0.5)
 
     # Añadir textos alineados con cada fila, fuera del área de la gráfica
     for i, conf in enumerate(custom_order):
         pct = contrib_dict.get(conf, 0)
-        ax.text(-0.055, i, f"{pct:.2f}%", fontsize=10, va='center', ha='right', color='dimgray', transform=ax.get_yaxis_transform())
-        ax.text(-0.05, i, conf, fontsize=14, va='center', ha='left', fontweight='bold', color='black', transform=ax.get_yaxis_transform())
+        ax.text(-0.06, i, f"{pct:.2f}%", fontsize=14, va='center', ha='right', color='dimgray', transform=ax.get_yaxis_transform())
+        ax.text(-0.055, i, conf, fontsize=14, va='center', ha='left', fontweight='bold', color='black', transform=ax.get_yaxis_transform())
 
     ax.set_xlim(min(x_ns_vals), md_time_ns + 0.5)
     ax.grid(True, axis='x', linestyle='--', alpha=0.5)
@@ -240,7 +240,7 @@ def plot_conformation_evolution(
 
 if __name__ == "__main__":
     # --- Configuración principal ---
-    cwd = r"C:\Users\richa\OneDrive\Desktop\T\Actuales\QCY_F1\adapted\H2O"
+    cwd = r"D:\Actuales\QCY_F1\adapted\H2O"
     names_file = 'names.csv'
     data_file = 'H2O.csv'
     order_file = 'order.csv'
