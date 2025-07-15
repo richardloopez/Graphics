@@ -1,0 +1,254 @@
+import os
+import glob
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import itertools
+from matplotlib.lines import Line2D
+from scipy.interpolate import make_interp_spline
+
+# ==========================
+# Configuration and Settings
+# ==========================
+
+# Set working directory to the folder containing your CSVs
+os.chdir(r"D:\Actuales\QCY\FINAL_LIE\Magic")  # <-- Change as needed
+
+# Show error bars in the plots
+SHOW_ERROR_BARS = False
+
+# Line styles for each data type
+LINE_STYLES = {
+    "TOTAL": {"linestyle": "-", "marker": "o", "label": "TOTAL"},
+    "EELEC": {"linestyle": "--", "marker": "s", "label": "EELEC"},
+    "EVDW":  {"linestyle": (0, (1, 1)), "marker": "D", "label": "EVDW"},
+}
+DATA_TYPES = ["TOTAL", "EELEC", "EVDW"]
+
+# Color palette for different simulations
+COLOR_LIST = [
+    "#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
+]
+
+# ==========================
+# Helper Functions
+# ==========================
+
+def transform_legend_label(filename_base):
+    """
+    If the filename contains '-+', replace it with a right arrow and
+    display the part after the arrow in bold (LaTeX mathtext).
+    """
+    if "-+" in filename_base:
+        left, right = filename_base.split("-+", 1)
+        left = left.strip()
+        right = right.strip()
+        # Use LaTeX for arrow and bold
+        return rf"$_{{{left} \rightarrow}}$$\mathbf{{{right}}}$"
+    else:
+        return filename_base
+
+# ==========================
+# Data Loading and Processing
+# ==========================
+
+# Find all CSV files in the current directory
+csv_files = sorted(glob.glob("*.csv"))
+if not csv_files:
+    raise FileNotFoundError("No CSV files found in the current directory.")
+
+all_tables = []
+
+for csv_file in csv_files:
+    df = pd.read_csv(csv_file)
+    base_name = os.path.basename(csv_file)
+    df['filename'] = base_name
+
+    # Add total energy columns
+    df['TOTAL_AV'] = df['EELEC_AV'] + df['EVDW_AV']
+    df['TOTAL_STDDEV'] = np.sqrt(df['EELEC_STDDEV']**2 + df['EVDW_STDDEV']**2)
+
+    # Ensure R1 and R2 columns exist (try to extract from filename if not)
+    if 'R1' not in df.columns or 'R2' not in df.columns:
+        import re
+        match = re.match(r"lie_LR(\d+)_RR(\d+)\.dat", base_name)
+        if match:
+            df['R1'] = int(match.group(1))
+            df['R2'] = int(match.group(2))
+        else:
+            df['R1'] = ''
+            df['R2'] = ''
+    all_tables.append(df)
+
+# Combine all tables into a single DataFrame
+table_df = pd.concat(all_tables, ignore_index=True)
+
+# Reorder and rename columns for clarity
+COLUMN_MAP = {
+    'filename': 'filename',
+    'R1': 'R1',
+    'R2': 'R2',
+    'EELEC_AV': 'EELEC_AV (kcal/mol)',
+    'EELEC_STDDEV': 'EELEC_STDDEV (kcal/mol)',
+    'EVDW_AV': 'EVDW_AV (kcal/mol)',
+    'EVDW_STDDEV': 'EVDW_STDDEV (kcal/mol)',
+    'TOTAL_AV': 'TOTAL_AV (kcal/mol)',
+    'TOTAL_STDDEV': 'TOTAL_STDDEV (kcal/mol)'
+}
+COLS_ORDER = [
+    'filename', 'R1', 'R2',
+    'EELEC_AV', 'EELEC_STDDEV',
+    'EVDW_AV', 'EVDW_STDDEV',
+    'TOTAL_AV', 'TOTAL_STDDEV'
+]
+table_df = table_df[COLS_ORDER]
+table_df = table_df.rename(columns=COLUMN_MAP)
+
+# ==========================
+# Plotting Function
+# ==========================
+
+def plot_interactions(selected_types, output_filename, plot_title):
+    """
+    Plots the selected energy types for all simulations found in the folder.
+    Each simulation gets a different color and a custom legend label.
+    """
+    plt.figure(figsize=(12, 7))
+    color_cycle = itertools.cycle(COLOR_LIST)
+    color_legend_handles = []
+
+    for csv_file in csv_files:
+        base_name = os.path.basename(csv_file)
+        df = table_df[table_df['filename'] == base_name]
+        color = next(color_cycle)
+        legend_label = transform_legend_label(os.path.splitext(base_name)[0])
+        color_legend_handles.append(
+            Line2D([0], [0], color=color, lw=3, label=legend_label)
+        )
+        residues = df['R2']
+
+        for dtype in selected_types:
+            y = df[f"{dtype}_AV (kcal/mol)"].values
+            yerr = df[f"{dtype}_STDDEV (kcal/mol)"].values
+            x = np.array(residues)
+            y = np.array(y)
+            if len(x) > 3:
+                x_smooth = np.linspace(x.min(), x.max(), 200)
+                spl = make_interp_spline(x, y, k=3)
+                y_smooth = spl(x_smooth)
+                plt.plot(
+                    x_smooth, y_smooth,
+                    color=color,
+                    linestyle=LINE_STYLES[dtype]["linestyle"],
+                    alpha=0.7
+                )
+            else:
+                plt.plot(
+                    x, y,
+                    color=color,
+                    linestyle=LINE_STYLES[dtype]["linestyle"],
+                    alpha=0.7
+                )
+            # Plot points and error bars (optional)
+            if SHOW_ERROR_BARS:
+                plt.errorbar(
+                    x, y, yerr=yerr,
+                    color=color,
+                    linestyle='none',
+                    marker=LINE_STYLES[dtype]["marker"],
+                    capsize=2,
+                    linewidth=1.2,
+                    markersize=4,
+                    alpha=0.9
+                )
+            else:
+                plt.plot(
+                    x, y,
+                    color=color,
+                    linestyle='none',
+                    marker=LINE_STYLES[dtype]["marker"],
+                    markersize=4,
+                    alpha=0.9
+                )
+
+    # Style legend (data types)
+    style_legend_handles = [
+        Line2D([0], [0], color='black',
+               linestyle=LINE_STYLES[t]["linestyle"],
+               marker=LINE_STYLES[t]["marker"], label=t)
+        for t in selected_types
+    ]
+    first_legend = plt.legend(
+        handles=style_legend_handles,
+        title="Data type",
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.55),
+        fontsize=10,
+        title_fontsize=12
+    )
+    plt.gca().add_artist(first_legend)
+    # Simulation legend (with custom labels)
+    legend2 = plt.legend(
+        handles=color_legend_handles,
+        title="Simulation",
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.25),
+        fontsize=11,
+        title_fontsize=12
+    )
+
+    plt.xlabel("Nucleotide #", fontsize=14, fontweight="bold")
+    plt.ylabel("Energy (kcal/mol)", fontsize=14, fontweight="bold")
+    #plt.title(plot_title, fontsize=16, fontweight="bold")
+    plt.grid(False)
+
+    # Set X ticks for all unique residues
+    all_residues = np.sort(table_df['R2'].unique())
+    plt.xticks(all_residues)
+
+    # Aumentar tamaño de los ticks
+    plt.tick_params(axis='both', labelsize=14)
+
+    plt.tight_layout()
+    plt.savefig(f"{output_filename}.jpg", dpi=300)
+    # Optionally, save as HTML with mpld3
+    try:
+        import mpld3
+        mpld3.save_html(plt.gcf(), f"{output_filename}.html")
+    except ImportError:
+        pass
+    plt.close()
+
+# ==========================
+# Main: Generate Plots and Tables
+# ==========================
+
+plot_interactions(["TOTAL", "EELEC", "EVDW"], "LIE_analysis_all", "LIE analysis QCy, dsDNA (All Interactions)")
+plot_interactions(["EELEC", "EVDW"], "LIE_analysis_elec_vdw", "LIE analysis QCy, dsDNA (EELEC & EVDW)")
+plot_interactions(["TOTAL"], "LIE_analysis_total", "LIE analysis QCy, dsDNA (TOTAL)")
+
+# Save summary table as CSV and HTML
+table_df.to_csv("LIE_summary_table.csv", index=False)
+table_df.to_html("LIE_summary_table.html", index=False)
+
+# Save summary table as a JPG image
+fig_table, ax_table = plt.subplots(figsize=(12, max(2, len(table_df)*0.25)))
+ax_table.axis('off')
+cell_text = table_df.values
+col_labels = table_df.columns
+the_table = ax_table.table(
+    cellText=cell_text,
+    colLabels=col_labels,
+    cellLoc='center',
+    loc='center'
+)
+the_table.auto_set_font_size(False)
+the_table.set_fontsize(8)
+the_table.scale(1, 1.2)
+plt.tight_layout()
+fig_table.savefig("LIE_summary_table.jpg", dpi=300, bbox_inches='tight')
+plt.close(fig_table)
+
+print("Saved plots as LIE_analysis_all.jpg, LIE_analysis_elec_vdw.jpg, LIE_analysis_total.jpg")
+print("Saved tables as LIE_summary_table.csv, LIE_summary_table.html, LIE_summary_table.jpg")
