@@ -85,7 +85,7 @@ import re
 # ==========================
 
 # Set working directory (change this as appropriate)
-os.chdir(r"D:\Actuales\QCY\FINAL_LIE\Magic")
+os.chdir(r"D:\Actuales\QCY\FINAL_LIE\dna")
 
 SHOW_ERROR_BARS = False
 
@@ -124,7 +124,7 @@ def transform_legend_label(clean_filename):
         left, right = clean_filename.split("-+", 1)
         left = left.strip()
         right = right.strip()
-        return rf"{left} $\rightarrow$ $\mathbf{{{right}}}$"
+        return rf"$_{{{left} \rightarrow}}$$\mathbf{{{right}}}$"
     else:
         return clean_filename
 
@@ -338,3 +338,4 @@ plt.close(fig_table)
 
 print("Saved plots as LIE_analysis_all.jpg, LIE_analysis_elec_vdw.jpg, LIE_analysis_total.jpg")
 print("Saved tables as LIE_summary_table.csv, LIE_summary_table.html, LIE_summary_table.jpg")
+
