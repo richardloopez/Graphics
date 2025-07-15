@@ -1,0 +1,268 @@
+"""
+Conformation Evolution Plotter
+
+Este script visualiza la evolución temporal de conformaciones en simulaciones,
+mostrando cambios de estado antes y durante la simulación, con etiquetas y
+porcentajes alineados fuera del área de la gráfica y sin artefactos visuales.
+
+ARCHIVOS DE ENTRADA (estructura requerida):
+
+1. names.csv
+    - Estructura:
+        old,new
+        confA,Conformación A
+        confB,Conformación B
+        ...
+    - Donde:
+        old: Nombre original de la conformación en los datos brutos (coincide con los usados en G4.csv).
+        new: Nombre que se usará en la visualización (más legible o traducido).
+
+2. G4.csv (o el archivo principal de trayectorias)
+    - Estructura:
+        ORIGINAL,C1_CONF,C1_STA,C1_END,C2_CONF,C2_STA,C2_END,...
+        confA,confB,1,200,confC,201,500,...
+        ...
+    - Donde:
+        ORIGINAL: Conformación inicial de la trayectoria.
+        Cn_CONF: Nombre de la conformación en el tramo n (coincide con 'old' en names.csv).
+        Cn_STA: Frame de inicio (1-based) del tramo n.
+        Cn_END: Frame de fin (inclusive) del tramo n.
+
+3. order.csv
+    - Estructura:
+        position,contribution
+        Conformación A,20.0%
+        Conformación B,15.5%
+        ...
+    - Donde:
+        position: Nombre de la conformación (debe coincidir con los 'new' de names.csv).
+        contribution: Porcentaje de aparición de cada conformación (con o sin símbolo %).
+
+Dependencias:
+    - pandas
+    - matplotlib
+    - numpy
+"""
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from collections import defaultdict
+import math
+import os
+
+def load_data(cwd, names_file, data_file, order_file):
+    """
+    Carga los archivos CSV requeridos.
+
+    Args:
+        cwd (str): Directorio de trabajo.
+        names_file (str): Nombre del archivo de nombres.
+        data_file (str): Nombre del archivo de datos principales.
+        order_file (str): Nombre del archivo de orden y porcentajes.
+
+    Returns:
+        names_df, df, order_df: DataFrames de los archivos.
+    """
+    os.chdir(cwd)
+    names_df = pd.read_csv(names_file)
+    df = pd.read_csv(data_file)
+    order_df = pd.read_csv(order_file)
+    return names_df, df, order_df
+
+def preprocess_data(names_df, df, order_df):
+    """
+    Renombra conformaciones y prepara los diccionarios de orden y porcentajes.
+
+    Args:
+        names_df, df, order_df: DataFrames de los archivos.
+
+    Returns:
+        df, order_df, custom_order, contrib_dict, conf_to_idx
+    """
+    name_map = dict(zip(names_df['old'].str.strip(), names_df['new'].str.strip()))
+    if 'ORIGINAL' in df.columns:
+        df['ORIGINAL'] = df['ORIGINAL'].map(lambda x: name_map.get(str(x).strip(), x))
+    conf_cols = [col for col in df.columns if col.endswith('_CONF')]
+    for col in conf_cols:
+        df[col] = df[col].map(lambda x: name_map.get(str(x).strip(), x) if pd.notna(x) else x)
+    order_df['contribution'] = order_df['contribution'].str.strip().str.rstrip('%').astype(float)
+    custom_order = order_df['position'].tolist()
+    contrib_dict = dict(zip(order_df['position'], order_df['contribution']))
+    conf_to_idx = {conf: i for i, conf in enumerate(custom_order)}
+    return df, order_df, custom_order, contrib_dict, conf_to_idx
+
+def build_traj_data(df, num_frames):
+    """
+    Reconstruye las trayectorias de conformaciones a lo largo de los frames.
+
+    Args:
+        df: DataFrame principal.
+        num_frames: Número total de frames de la simulación.
+
+    Returns:
+        traj_data: Lista de tuplas (conformación_inicial, trayectoria)
+    """
+    traj_data = []
+    for idx, row in df.iterrows():
+        trajectory = [None] * num_frames
+        for i in range(1, 11):
+            conf = row.get(f'C{i}_CONF')
+            sta = row.get(f'C{i}_STA')
+            end = row.get(f'C{i}_END')
+            if pd.notna(conf) and pd.notna(sta) and pd.notna(end):
+                start = int(sta) - 1
+                stop = min(int(end), num_frames)
+                for t in range(start, stop):
+                    trajectory[t] = conf
+        traj_data.append((row['ORIGINAL'], trajectory))
+    return traj_data
+
+def assign_preframe_changes(df, pre_frames, preframe_offset=5):
+    """
+    Asigna los cambios de conformación previos al frame 0, distribuyéndolos
+    equitativamente entre los preframes seleccionados (dejando un margen configurable).
+
+    Args:
+        df: DataFrame principal.
+        pre_frames: Número de preframes antes del 0.
+        preframe_offset: Número de preframes a dejar sin cambios al principio.
+
+    Returns:
+        pre_change_trajs: Índices de trayectorias que cambian antes del frame 0.
+        preframe_change_points: Diccionario {índice_trayectoria: frame_de_cambio}
+    """
+    pre_change_trajs = [i for i, row in df.iterrows() if row['ORIGINAL'] != row['C1_CONF']]
+    num_pre_change = len(pre_change_trajs)
+    preframe_change_points = {}
+    if num_pre_change > 0:
+        available_preframes = list(range(-pre_frames + preframe_offset, 0))  # Ej: [-10, ..., -1] para pre_frames=15 y offset=5
+        if num_pre_change > len(available_preframes):
+            raise ValueError("Más trayectorias que preframes disponibles para repartir cambios sin solapamiento.")
+        indices = [math.ceil(i * (len(available_preframes) - 1) / (num_pre_change - 1)) if num_pre_change > 1 else 0 for i in range(num_pre_change)]
+        for idx, traj_idx in enumerate(pre_change_trajs):
+            change_frame = available_preframes[indices[idx]]
+            preframe_change_points[traj_idx] = change_frame
+    return pre_change_trajs, preframe_change_points
+
+def frame_to_ns(frame_idx, md_time_ns, num_frames):
+    """
+    Convierte un número de frame en tiempo de simulación (ns).
+    """
+    return frame_idx * (md_time_ns / num_frames)
+
+def plot_conformation_evolution(
+    df, traj_data, frame_conf_trajs, pre_change_trajs, preframe_change_points,
+    custom_order, contrib_dict, conf_to_idx, pre_frames, num_frames, md_time_ns
+):
+    """
+    Dibuja la evolución temporal de conformaciones para todas las trayectorias.
+    """
+    fig, ax = plt.subplots(figsize=(14, 8))
+    x_ns_vals = [frame for frame in range(-pre_frames + 1, 1)] + [frame_to_ns(f, md_time_ns, num_frames) for f in range(1, num_frames + 1)]
+
+    for traj_idx, (orig, traj) in enumerate(traj_data):
+        y_vals = []
+        x_plot_vals = []
+        # --- Preframes ---
+        if traj_idx in preframe_change_points:
+            change_frame = preframe_change_points[traj_idx]
+            # Preframes antes del cambio
+            for frame in range(-pre_frames + 1, change_frame):
+                y_vals.append(conf_to_idx.get(orig, np.nan))
+                x_plot_vals.append(frame)
+            # Doble punto en el frame de cambio: primero el valor original, luego el nuevo
+            y_vals.append(conf_to_idx.get(orig, np.nan))
+            x_plot_vals.append(change_frame)
+            y_vals.append(conf_to_idx.get(df.loc[traj_idx, 'C1_CONF'], np.nan))
+            x_plot_vals.append(change_frame)
+            # Resto de preframes hasta 0 con el valor nuevo
+            for frame in range(change_frame + 1, 1):
+                y_vals.append(conf_to_idx.get(df.loc[traj_idx, 'C1_CONF'], np.nan))
+                x_plot_vals.append(frame)
+        else:
+            for frame in range(-pre_frames + 1, 1):
+                y_vals.append(conf_to_idx.get(orig, np.nan))
+                x_plot_vals.append(frame)
+        # --- Dinámica ---
+        for frame in range(1, num_frames + 1):
+            conf = traj[frame - 1]
+            if conf is not None:
+                idxs = frame_conf_trajs[frame - 1][conf]
+                pos = idxs.index(traj_idx)
+                n = len(idxs)
+                jitter_v = 0.6 * (pos - (n - 1) / 2) / max(n, 1)
+                y_val = conf_to_idx.get(conf, np.nan)
+                if not np.isnan(y_val):
+                    y_val += jitter_v
+                y_vals.append(y_val)
+            else:
+                y_vals.append(np.nan)
+            x_plot_vals.append(frame_to_ns(frame, md_time_ns, num_frames))
+        ax.plot(x_plot_vals, y_vals, alpha=0.7, linewidth=1.5)
+
+    present = set(orig for orig, _ in traj_data)
+    for orig_conf in df['ORIGINAL'].unique():
+        if orig_conf not in present:
+            x_pre = [frame for frame in range(-pre_frames + 1, 1)]
+            y_pre = [conf_to_idx.get(orig_conf, np.nan)] * len(x_pre)
+            ax.plot(x_pre, y_pre, linestyle='dotted', color='grey', alpha=0.5)
+
+    # Eje Y sin etiquetas ni ticks
+    ax.set_yticks(range(len(custom_order)))
+    ax.set_yticklabels([""] * len(custom_order))
+    ax.invert_yaxis()
+
+    # Eje X
+    xticks = [0] + [frame_to_ns(int(round(ns_tick * num_frames / md_time_ns)), md_time_ns, num_frames) for ns_tick in [50, 100, 150, 200, 250, 300]]
+    xticklabels = ['0'] + [str(int(t)) for t in [50, 100, 150, 200, 250, 300]]
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(xticklabels, fontsize=11)
+    ax.tick_params(axis='both', which='major', labelsize=11)
+
+    # Etiquetas y título
+    ax.set_xlabel('Simulation Time (ns)', fontsize=14, fontweight='bold')
+    ax.set_ylabel('QCy(MeBT)₃ conformer', fontsize=14, fontweight='bold')
+    #ax.set_title('Conformation Evolution per Simulation Time', fontsize=16, fontweight='bold')
+
+    plt.subplots_adjust(left=0.25, right=0.97, top=0.9, bottom=0.1)
+    ax.yaxis.set_label_coords(-0.11, 0.5)
+
+    # Añadir textos alineados con cada fila, fuera del área de la gráfica
+    for i, conf in enumerate(custom_order):
+        pct = contrib_dict.get(conf, 0)
+        ax.text(-0.055, i, f"{pct:.2f}%", fontsize=10, va='center', ha='right', color='dimgray', transform=ax.get_yaxis_transform())
+        ax.text(-0.05, i, conf, fontsize=14, va='center', ha='left', fontweight='bold', color='black', transform=ax.get_yaxis_transform())
+
+    ax.set_xlim(min(x_ns_vals), md_time_ns + 0.5)
+    ax.grid(True, axis='x', linestyle='--', alpha=0.5)
+    plt.show()
+
+if __name__ == "__main__":
+    # --- Configuración principal ---
+    cwd = r"C:\Users\richa\OneDrive\Desktop\T\Actuales\QCY_F1\adapted\H2O"
+    names_file = 'names.csv'
+    data_file = 'H2O.csv'
+    order_file = 'order.csv'
+    pre_frames = 50
+    num_frames = 1500
+    md_time_ns = 300
+    preframe_offset = 5  # Número de preframes a dejar sin cambios al principio
+
+    # --- Carga y preparación ---
+    names_df, df, order_df = load_data(cwd, names_file, data_file, order_file)
+    df, order_df, custom_order, contrib_dict, conf_to_idx = preprocess_data(names_df, df, order_df)
+    traj_data = build_traj_data(df, num_frames)
+
+    frame_conf_trajs = defaultdict(lambda: defaultdict(list))
+    for traj_idx, (orig, traj) in enumerate(traj_data):
+        for frame, conf in enumerate(traj):
+            if conf is not None:
+                frame_conf_trajs[frame][conf].append(traj_idx)
+
+    pre_change_trajs, preframe_change_points = assign_preframe_changes(df, pre_frames, preframe_offset)
+
+    plot_conformation_evolution(
+        df, traj_data, frame_conf_trajs, pre_change_trajs, preframe_change_points,
+        custom_order, contrib_dict, conf_to_idx, pre_frames, num_frames, md_time_ns
+    )
