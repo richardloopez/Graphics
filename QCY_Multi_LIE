@@ -85,14 +85,14 @@ import re
 # ==========================
 
 # Set working directory (change this as appropriate)
-os.chdir(r"D:\Actuales\QCY\FINAL_LIE\dna")
+os.chdir(r"E:\Actuales\QCY\FINAL_LIE\dna")
 
 SHOW_ERROR_BARS = False
 
 LINE_STYLES = {
-    "TOTAL": {"linestyle": "-", "marker": "o", "label": "TOTAL"},
-    "EELEC": {"linestyle": "--", "marker": "s", "label": "EELEC"},
-    "EVDW":  {"linestyle": (0, (1, 1)), "marker": "D", "label": "EVDW"},
+    "TOTAL": {"linestyle": "-", "marker": "o", "label": "Total"},
+    "EELEC": {"linestyle": "--", "marker": "s", "label": "E(elec)"},
+    "EVDW":  {"linestyle": (0, (1, 1)), "marker": "D", "label": "E(VdW)"},
 }
 DATA_TYPES = ["TOTAL", "EELEC", "EVDW"]
 
@@ -262,11 +262,10 @@ def plot_interactions(selected_types, output_filename, plot_title):
 
     # Energy type legend
     style_legend_handles = [
-        Line2D([0], [0], color='black',
-               linestyle=LINE_STYLES[t]["linestyle"],
-               marker=LINE_STYLES[t]["marker"], label=t)
+        Line2D([0], [0], color='black', linestyle=LINE_STYLES[t]["linestyle"], marker=LINE_STYLES[t]["marker"], label=LINE_STYLES[t]["label"])
         for t in selected_types
     ]
+
     first_legend = plt.legend(
         handles=style_legend_handles,
         title="Data type",
