@@ -269,8 +269,8 @@ def plot_interactions(selected_types, output_filename, plot_title):
     first_legend = plt.legend(
         handles=style_legend_handles,
         title="Data type",
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.55),
+        loc="upper right",
+        bbox_to_anchor=(1, 0.50),
         fontsize=10,
         title_fontsize=12
     )
@@ -279,8 +279,8 @@ def plot_interactions(selected_types, output_filename, plot_title):
     legend2 = plt.legend(
         handles=color_legend_handles,
         title="Simulation",
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.25),
+        loc="upper left",
+        bbox_to_anchor=(0, 0.50),
         fontsize=11,
         title_fontsize=12
     )
