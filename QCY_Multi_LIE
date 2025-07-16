@@ -3,7 +3,6 @@ Boltzmann and LIE Interaction Plotter
 -------------------------------------
 
 This script automatically reads, processes, and plots LIE energy data for molecular dynamics conformers.  
-**File and variable naming, docstrings, and comments are in English for GitHub publication.**
 
 ================================================================================
 INPUT REQUIREMENTS
@@ -85,7 +84,7 @@ import re
 # ==========================
 
 # Set working directory (change this as appropriate)
-os.chdir(r"E:\Actuales\QCY\FINAL_LIE\dna")
+os.chdir(r"E:\Actuales\QCY\FINAL_LIE\G4")
 
 SHOW_ERROR_BARS = False
 
@@ -270,7 +269,7 @@ def plot_interactions(selected_types, output_filename, plot_title):
         handles=style_legend_handles,
         title="Data type",
         loc="upper right",
-        bbox_to_anchor=(1, 0.50),
+        bbox_to_anchor=(1, 0.75),
         fontsize=10,
         title_fontsize=12
     )
@@ -279,8 +278,8 @@ def plot_interactions(selected_types, output_filename, plot_title):
     legend2 = plt.legend(
         handles=color_legend_handles,
         title="Simulation",
-        loc="upper left",
-        bbox_to_anchor=(0, 0.50),
+        loc="lower right",
+        bbox_to_anchor=(1, 0.15),
         fontsize=11,
         title_fontsize=12
     )
