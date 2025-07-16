@@ -1,47 +1,52 @@
 """
 Conformation Evolution Plotter
 
-Este script visualiza la evolución temporal de conformaciones en simulaciones,
-mostrando cambios de estado antes y durante la simulación, con etiquetas y
-porcentajes alineados fuera del área de la gráfica y sin artefactos visuales.
+This script visualizes the temporal evolution of molecular conformations in simulation runs,
+showing state changes before and during the main simulation time. Each conformation row can be 
+labeled and annotated with its relative occurrence percentage, shown outside the plot area without visual artifacts.
 
-ARCHIVOS DE ENTRADA (estructura requerida):
+INPUT FILES (required structure):
 
 1. names.csv
-    - Estructura:
+    - Structure:
         old,new
-        confA,Conformación A
-        confB,Conformación B
+        confA,Conformation A
+        confB,Conformation B
         ...
-    - Donde:
-        old: Nombre original de la conformación en los datos brutos (coincide con los usados en G4.csv).
-        new: Nombre que se usará en la visualización (más legible o traducido).
+    - Where:
+        old: Original conformation name from raw data (must match those used in the G4.csv or H2O.csv).
+        new: Name to use in the visualization (more readable or translated).
 
-2. G4.csv (o el archivo principal de trayectorias)
-    - Estructura:
+2. G4.csv (or H2O.csv, or the main trajectory file)
+    - Structure:
         ORIGINAL,C1_CONF,C1_STA,C1_END,C2_CONF,C2_STA,C2_END,...
         confA,confB,1,200,confC,201,500,...
         ...
-    - Donde:
-        ORIGINAL: Conformación inicial de la trayectoria.
-        Cn_CONF: Nombre de la conformación en el tramo n (coincide con 'old' en names.csv).
-        Cn_STA: Frame de inicio (1-based) del tramo n.
-        Cn_END: Frame de fin (inclusive) del tramo n.
+    - Where:
+        ORIGINAL: Initial conformation for the trajectory.
+        Cn_CONF: Conformation name in segment n (matches 'old' in names.csv).
+        Cn_STA: Start frame (1-based) of segment n.
+        Cn_END: End frame (inclusive) of segment n.
 
 3. order.csv
-    - Estructura:
+    - Structure:
         position,contribution
-        Conformación A,20.0%
-        Conformación B,15.5%
+        Conformation A,20.0%
+        Conformation B,15.5%
         ...
-    - Donde:
-        position: Nombre de la conformación (debe coincidir con los 'new' de names.csv).
-        contribution: Porcentaje de aparición de cada conformación (con o sin símbolo %).
+    - Where:
+        position: Conformation name (must match the 'new' names from names.csv).
+        contribution: Percent occurrence for each conformation (with or without % symbol).
 
-Dependencias:
+Dependencies:
     - pandas
     - matplotlib
     - numpy
+
+Additional functionality:
+    - Handles pre-simulation state changes (preframes).
+    - Allows custom ticks at the start of the X axis, both position and label.
+    - Trajectories without a segment are shown as grey dotted lines for clarity.
 """
 
 import pandas as pd
@@ -52,59 +57,34 @@ import math
 import os
 
 def load_data(cwd, names_file, data_file, order_file):
-    """
-    Carga los archivos CSV requeridos.
-
-    Args:
-        cwd (str): Directorio de trabajo.
-        names_file (str): Nombre del archivo de nombres.
-        data_file (str): Nombre del archivo de datos principales.
-        order_file (str): Nombre del archivo de orden y porcentajes.
-
-    Returns:
-        names_df, df, order_df: DataFrames de los archivos.
-    """
+    """Load all required CSV files and return as pandas DataFrames."""
     os.chdir(cwd)
     names_df = pd.read_csv(names_file)
-    df = pd.read_csv(data_file)
+    data_df = pd.read_csv(data_file)
     order_df = pd.read_csv(order_file)
-    return names_df, df, order_df
+    return names_df, data_df, order_df
 
-def preprocess_data(names_df, df, order_df):
-    """
-    Renombra conformaciones y prepara los diccionarios de orden y porcentajes.
-
-    Args:
-        names_df, df, order_df: DataFrames de los archivos.
-
-    Returns:
-        df, order_df, custom_order, contrib_dict, conf_to_idx
-    """
+def preprocess_data(names_df, data_df, order_df):
+    """Map, clean, and prepare all relevant conformation names and dictionaries for plotting."""
     name_map = dict(zip(names_df['old'].str.strip(), names_df['new'].str.strip()))
-    if 'ORIGINAL' in df.columns:
-        df['ORIGINAL'] = df['ORIGINAL'].map(lambda x: name_map.get(str(x).strip(), x))
-    conf_cols = [col for col in df.columns if col.endswith('_CONF')]
+    if 'ORIGINAL' in data_df.columns:
+        data_df['ORIGINAL'] = data_df['ORIGINAL'].map(lambda x: name_map.get(str(x).strip(), x))
+    conf_cols = [col for col in data_df.columns if col.endswith('_CONF')]
     for col in conf_cols:
-        df[col] = df[col].map(lambda x: name_map.get(str(x).strip(), x) if pd.notna(x) else x)
+        data_df[col] = data_df[col].map(lambda x: name_map.get(str(x).strip(), x) if pd.notna(x) else x)
     order_df['contribution'] = order_df['contribution'].str.strip().str.rstrip('%').astype(float)
     custom_order = order_df['position'].tolist()
     contrib_dict = dict(zip(order_df['position'], order_df['contribution']))
     conf_to_idx = {conf: i for i, conf in enumerate(custom_order)}
-    return df, order_df, custom_order, contrib_dict, conf_to_idx
+    return data_df, order_df, custom_order, contrib_dict, conf_to_idx
 
-def build_traj_data(df, num_frames):
+def build_trajectory_data(data_df, num_frames):
     """
-    Reconstruye las trayectorias de conformaciones a lo largo de los frames.
-
-    Args:
-        df: DataFrame principal.
-        num_frames: Número total de frames de la simulación.
-
-    Returns:
-        traj_data: Lista de tuplas (conformación_inicial, trayectoria)
+    Convert the conformation segment structure to full per-frame lists.
+    Returns a list of tuples: (initial_conformation, trajectory_list).
     """
-    traj_data = []
-    for idx, row in df.iterrows():
+    trajectory_data = []
+    for idx, row in data_df.iterrows():
         trajectory = [None] * num_frames
         for i in range(1, 11):
             conf = row.get(f'C{i}_CONF')
@@ -115,76 +95,77 @@ def build_traj_data(df, num_frames):
                 stop = min(int(end), num_frames)
                 for t in range(start, stop):
                     trajectory[t] = conf
-        traj_data.append((row['ORIGINAL'], trajectory))
-    return traj_data
+        trajectory_data.append((row['ORIGINAL'], trajectory))
+    return trajectory_data
 
-def assign_preframe_changes(df, pre_frames, preframe_offset=5):
+def assign_preframe_changes(data_df, pre_frames, preframe_offset=5):
     """
-    Asigna los cambios de conformación previos al frame 0, distribuyéndolos
-    equitativamente entre los preframes seleccionados (dejando un margen configurable).
-
-    Args:
-        df: DataFrame principal.
-        pre_frames: Número de preframes antes del 0.
-        preframe_offset: Número de preframes a dejar sin cambios al principio.
+    Assigns pre-simulation state changes across available preframes for trajectories
+    whose initial conformation does not match their first segment conformation.
 
     Returns:
-        pre_change_trajs: Índices de trayectorias que cambian antes del frame 0.
-        preframe_change_points: Diccionario {índice_trayectoria: frame_de_cambio}
+        pre_change_trajs: list of row indices with prestate changes.
+        preframe_change_points: dict (trajectory_index: preframe_index_of_change)
     """
-    pre_change_trajs = [i for i, row in df.iterrows() if row['ORIGINAL'] != row['C1_CONF']]
+    pre_change_trajs = [
+        i for i, row in data_df.iterrows()
+        if row['ORIGINAL'] != row['C1_CONF']
+    ]
     num_pre_change = len(pre_change_trajs)
     preframe_change_points = {}
     if num_pre_change > 0:
-        available_preframes = list(range(-pre_frames + preframe_offset, 0))  # Ej: [-10, ..., -1] para pre_frames=15 y offset=5
+        available_preframes = list(range(-pre_frames + preframe_offset, 0))
         if num_pre_change > len(available_preframes):
-            raise ValueError("Más trayectorias que preframes disponibles para repartir cambios sin solapamiento.")
-        indices = [math.ceil(i * (len(available_preframes) - 1) / (num_pre_change - 1)) if num_pre_change > 1 else 0 for i in range(num_pre_change)]
+            raise ValueError("More trajectories than available preframes to distribute without overlap.")
+        indices = [
+            math.ceil(i * (len(available_preframes) - 1) / (num_pre_change - 1)) if num_pre_change > 1 else 0
+            for i in range(num_pre_change)
+        ]
         for idx, traj_idx in enumerate(pre_change_trajs):
             change_frame = available_preframes[indices[idx]]
             preframe_change_points[traj_idx] = change_frame
     return pre_change_trajs, preframe_change_points
 
 def frame_to_ns(frame_idx, md_time_ns, num_frames):
-    """
-    Convierte un número de frame en tiempo de simulación (ns).
-    """
+    """Convert a frame index to simulation time (ns)."""
     return frame_idx * (md_time_ns / num_frames)
 
 def plot_conformation_evolution(
-    df, traj_data, frame_conf_trajs, pre_change_trajs, preframe_change_points,
-    custom_order, contrib_dict, conf_to_idx, pre_frames, num_frames, md_time_ns
+    data_df, trajectory_data, frame_conf_trajs, pre_change_trajs, preframe_change_points,
+    custom_order, contrib_dict, conf_to_idx, pre_frames, num_frames, md_time_ns,
+    custom_xtick_val, custom_xtick_label
 ):
     """
-    Dibuja la evolución temporal de conformaciones para todas las trayectorias.
+    Main plotting function: draws the evolution of conformations across time for all trajectories.
+    Pre-simulation states are shown as negative ticks; custom_leftmost_tick allows arbitrary labeling.
     """
     fig, ax = plt.subplots(figsize=(14, 8))
     x_ns_vals = [frame for frame in range(-pre_frames + 1, 1)] + [frame_to_ns(f, md_time_ns, num_frames) for f in range(1, num_frames + 1)]
 
-    for traj_idx, (orig, traj) in enumerate(traj_data):
+    for traj_idx, (orig, traj) in enumerate(trajectory_data):
         y_vals = []
         x_plot_vals = []
-        # --- Preframes ---
+        # --- Preframes (before main simulation) ---
         if traj_idx in preframe_change_points:
             change_frame = preframe_change_points[traj_idx]
-            # Preframes antes del cambio
+            # Preframes before change
             for frame in range(-pre_frames + 1, change_frame):
                 y_vals.append(conf_to_idx.get(orig, np.nan))
                 x_plot_vals.append(frame)
-            # Doble punto en el frame de cambio: primero el valor original, luego el nuevo
+            # Double point at change: first old, then new
             y_vals.append(conf_to_idx.get(orig, np.nan))
             x_plot_vals.append(change_frame)
-            y_vals.append(conf_to_idx.get(df.loc[traj_idx, 'C1_CONF'], np.nan))
+            y_vals.append(conf_to_idx.get(data_df.loc[traj_idx, 'C1_CONF'], np.nan))
             x_plot_vals.append(change_frame)
-            # Resto de preframes hasta 0 con el valor nuevo
+            # Remaining preframes (after change, before t=0)
             for frame in range(change_frame + 1, 1):
-                y_vals.append(conf_to_idx.get(df.loc[traj_idx, 'C1_CONF'], np.nan))
+                y_vals.append(conf_to_idx.get(data_df.loc[traj_idx, 'C1_CONF'], np.nan))
                 x_plot_vals.append(frame)
         else:
             for frame in range(-pre_frames + 1, 1):
                 y_vals.append(conf_to_idx.get(orig, np.nan))
                 x_plot_vals.append(frame)
-        # --- Dinámica ---
+        # --- Main simulation frames ---
         for frame in range(1, num_frames + 1):
             conf = traj[frame - 1]
             if conf is not None:
@@ -195,40 +176,50 @@ def plot_conformation_evolution(
                 y_val = conf_to_idx.get(conf, np.nan)
                 if not np.isnan(y_val):
                     y_val += jitter_v
-                y_vals.append(y_val)
+                    y_vals.append(y_val)
+                else:
+                    y_vals.append(np.nan)
             else:
                 y_vals.append(np.nan)
             x_plot_vals.append(frame_to_ns(frame, md_time_ns, num_frames))
         ax.plot(x_plot_vals, y_vals, alpha=0.7, linewidth=1.5)
-
-    present = set(orig for orig, _ in traj_data)
-    for orig_conf in df['ORIGINAL'].unique():
+    
+    # Draw grey dotted lines for initial conformers with no assigned trajectories
+    present = set(orig for orig, _ in trajectory_data)
+    for orig_conf in data_df['ORIGINAL'].unique():
         if orig_conf not in present:
             x_pre = [frame for frame in range(-pre_frames + 1, 1)]
             y_pre = [conf_to_idx.get(orig_conf, np.nan)] * len(x_pre)
             ax.plot(x_pre, y_pre, linestyle='dotted', color='grey', alpha=0.5)
 
-    # Eje Y sin etiquetas ni ticks
+    # Hide Y tick labels (use only annotations outside plot)
     ax.set_yticks(range(len(custom_order)))
     ax.set_yticklabels([""] * len(custom_order))
     ax.invert_yaxis()
 
-    # Eje X
-    xticks = [0] + [frame_to_ns(int(round(ns_tick * num_frames / md_time_ns)), md_time_ns, num_frames) for ns_tick in [50, 100, 150, 200, 250, 300]]
-    xticklabels = ['0'] + [str(int(t)) for t in [50, 100, 150, 200, 250, 300]]
+    # X axis with custom tick at the left
+    xticks = [custom_xtick_val, 0] + [
+        frame_to_ns(int(round(ns_tick * num_frames / md_time_ns)), md_time_ns, num_frames)
+        for ns_tick in [50, 100, 150, 200, 250, 300]
+    ]
+    xticklabels = [custom_xtick_label, '0'] + [str(int(t)) for t in [50, 100, 150, 200, 250, 300]]
     ax.set_xticks(xticks)
     ax.set_xticklabels(xticklabels, fontsize=18)
     ax.tick_params(axis='both', which='major', labelsize=18)
 
-    # Etiquetas y título
-    ax.set_xlabel('Simulation Time (ns)', fontsize=20, fontweight='bold')
+    # X axis labels for preframes and simulation time
+    preframes_center = (min(x_ns_vals) + 0) / 2       # center of preframes
+    simframes_center = (0 + md_time_ns) / 2           # center of simulation time
+    ax.text(preframes_center, -0.11, "Equilibration", transform=ax.get_xaxis_transform(), ha='center', va='center', fontsize=20, fontweight='bold')
+    ax.text(simframes_center, -0.11, "Simulation Time (ns)", transform=ax.get_xaxis_transform(), ha='center', va='center', fontsize=20, fontweight='bold')
+    
+    # Y axis labels for preframes and simulation time
     ax.set_ylabel('QCy(MeBT)₃ conformer', fontsize=20, fontweight='bold')
-    #ax.set_title('Conformation Evolution per Simulation Time', fontsize=16, fontweight='bold')
 
     plt.subplots_adjust(left=0.25, right=0.97, top=0.9, bottom=0.1)
     ax.yaxis.set_label_coords(-0.13, 0.5)
 
-    # Añadir textos alineados con cada fila, fuera del área de la gráfica
+    # Add annotated percentage and name for each line of the plot, outside main area
     for i, conf in enumerate(custom_order):
         pct = contrib_dict.get(conf, 0)
         ax.text(-0.06, i, f"{pct:.2f}%", fontsize=14, va='center', ha='right', color='dimgray', transform=ax.get_yaxis_transform())
@@ -239,30 +230,33 @@ def plot_conformation_evolution(
     plt.show()
 
 if __name__ == "__main__":
-    # --- Configuración principal ---
-    cwd = r"D:\Actuales\QCY_F1\adapted\H2O"
+    # --- Main configuration ---
+    cwd = r"E:\Actuales\QCY_F1\adapted\H2O"
     names_file = 'names.csv'
     data_file = 'H2O.csv'
     order_file = 'order.csv'
-    pre_frames = 50
-    num_frames = 1500
-    md_time_ns = 300
-    preframe_offset = 5  # Número de preframes a dejar sin cambios al principio
+    pre_frames = 50             # Number of preframes before t=0
+    num_frames = 1500           # Total number of MD frames
+    md_time_ns = 300            # MD total time (ns)
+    preframe_offset = 5         # How many preframes to leave as initial state (before a conformational transition)
 
-    # --- Carga y preparación ---
-    names_df, df, order_df = load_data(cwd, names_file, data_file, order_file)
-    df, order_df, custom_order, contrib_dict, conf_to_idx = preprocess_data(names_df, df, order_df)
-    traj_data = build_traj_data(df, num_frames)
-
+    # --- Data loading and preprocessing ---
+    names_df, data_df, order_df = load_data(cwd, names_file, data_file, order_file)
+    data_df, order_df, custom_order, contrib_dict, conf_to_idx = preprocess_data(names_df, data_df, order_df)
+    trajectory_data = build_trajectory_data(data_df, num_frames)
     frame_conf_trajs = defaultdict(lambda: defaultdict(list))
-    for traj_idx, (orig, traj) in enumerate(traj_data):
+    for traj_idx, (orig, traj) in enumerate(trajectory_data):
         for frame, conf in enumerate(traj):
             if conf is not None:
                 frame_conf_trajs[frame][conf].append(traj_idx)
+    pre_change_trajs, preframe_change_points = assign_preframe_changes(data_df, pre_frames, preframe_offset)
 
-    pre_change_trajs, preframe_change_points = assign_preframe_changes(df, pre_frames, preframe_offset)
+    # --- Custom tick for left-most X axis value ---
+    custom_xtick_val = -49
+    custom_xtick_label = "-4"
 
     plot_conformation_evolution(
-        df, traj_data, frame_conf_trajs, pre_change_trajs, preframe_change_points,
-        custom_order, contrib_dict, conf_to_idx, pre_frames, num_frames, md_time_ns
+        data_df, trajectory_data, frame_conf_trajs, pre_change_trajs, preframe_change_points,
+        custom_order, contrib_dict, conf_to_idx, pre_frames, num_frames, md_time_ns,
+        custom_xtick_val, custom_xtick_label
     )
