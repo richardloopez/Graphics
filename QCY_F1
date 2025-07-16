@@ -210,7 +210,7 @@ def plot_conformation_evolution(
     # X axis labels for preframes and simulation time
     preframes_center = (min(x_ns_vals) + 0) / 2       # center of preframes
     simframes_center = (0 + md_time_ns) / 2           # center of simulation time
-    ax.text(preframes_center, -0.11, "Equilibration", transform=ax.get_xaxis_transform(), ha='center', va='center', fontsize=20, fontweight='bold')
+    ax.text(preframes_center, -0.08, "Equilibration", transform=ax.get_xaxis_transform(), ha='center', va='center', fontsize=14, fontweight='bold')
     ax.text(simframes_center, -0.11, "Simulation Time (ns)", transform=ax.get_xaxis_transform(), ha='center', va='center', fontsize=20, fontweight='bold')
     
     # Y axis labels for preframes and simulation time
