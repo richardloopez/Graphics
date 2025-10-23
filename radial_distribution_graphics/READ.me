@@ -1,0 +1,49 @@
+Polar Visualization Tool for Aggregated Radial Densities
+This Python tool generates a segmented polar heatmap to visually compare multiple datasets of aggregated radial density, typically obtained from molecular dynamics simulations or local structure analysis (like Radial Distribution Function $g(r)$ or a related quantity). Each input file is represented as an angular segment of the polar plot, allowing for direct comparison of density distribution across different systems or atomic pairs.
+Key Features
+"	Segmented Visualization: Represents multiple input CSV files on a single polar plot, dedicating an angular sector to each dataset.
+"	Polar Heatmap: Uses pcolormesh on polar axes to display density (Z-axis, color) as a function of radial distance (R-axis) and segment ($\theta$-axis, angular).
+"	Data Aggregation: Processes scattered data (distance vs. density) and aggregates it into configurable radial bins ($\Delta R$).
+"	Flexible Configuration: Allows defining custom limits for the radial axis ($R$) and the color scale (density $Z$) for fair comparison, as well as setting segment labels.
+"	Advanced Aesthetics: Includes halo effects (black/white border) on labels and radial ticks to enhance visibility over the colored background.
+"	High-Quality Output: Generates a 300 DPI PNG file (polar_density_comparison_N_files.png).
+________________________________________
+Input File Structure and Format
+The script is designed to read scattered radial density data, where each row represents a sample or a data point $(R, \rho)$.
+Required CSV File Format
+All files listed in the global variable FILE_NAMES must adhere to exactly the following format:
+Column	Descriptive Name	Data Type	Content
+1	Distance	Numeric (Float)	The radial distance ($R$) in $\AA$.
+2	Density_Value	Numeric (Float)	The corresponding density value (e.g., $4\pi r^2 \rho g(r)$) in $\AA^{-3}$.
+Constraints:
+1.	Delimiter: Files must use a comma (,) as the field delimiter.
+2.	Decimal Separator: The decimal separator must be a dot (.).
+3.	Headers: The script expects the files to NOT have a header row, or the first row must be skipped (skiprows=1 is used in the reading function).
+Example of the First Rows of an Input File:
+Distance,WAT
+2.503,0.000105
+2.505,0.000118
+2.506,0.000129
+...
+________________________________________
+Configuration and Key Variables
+Before running the script, the following variables must be configured in the --- CONFIGURATION --- section:
+Variable	Description	Example
+FILE_NAMES	List of the paths/names of the input CSV files.	['fileA.csv', 'fileB.csv']
+SEGMENT_LABELS	List of labels for each angular segment/file. Must have the same length as FILE_NAMES.	['System A', 'System B']
+BIN_WIDTH_ANGSTROM	The radial bin width ($\Delta R$) used to aggregate the data.	0.01
+MAX_R_LIMIT_DISPLAY	The outer radial limit ($R_{max}$) for the plot. Recommended for uniformity.	8.0
+MAX_Z_LIMIT_DISPLAY	The upper limit for the color scale (density $\rho$) for a consistent comparison.	0.8
+________________________________________
+Dependencies
+This script requires the following Python libraries:
+"	pandas
+"	matplotlib
+"	numpy
+"	os
+"	math
+They can be installed using pip:
+Bash
+pip install pandas matplotlib numpy
+
+
