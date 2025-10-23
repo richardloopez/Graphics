@@ -1,0 +1,51 @@
+Energy Analysis Aggregator and Plotter
+This Python script is designed to automate the aggregation, statistical analysis, and visualization of energy decomposition data, likely originating from molecular simulations such as LIE (Linear Interaction Energy) or similar methods. It filters numerous individual CSV files based on complex Boolean criteria, calculates mean and standard deviation for specified energy terms, and generates a comparative grouped bar chart.
+Features
+"	Batch Aggregation: Combines data from multiple CSV files into single, consolidated data frames based on predefined search configurations.
+"	Boolean Filtering: Filters input files using AND, OR, and NOT criteria applied to their filenames, allowing for precise grouping of simulation results.
+"	Statistical Analysis: Calculates the mean and standard deviation for specified energy metrics (Electrostatic, Van der Waals, Total Energy).
+"	Metadata Integration: Inserts calculated statistics and the applied search criteria as commented metadata headers (# prefixed lines) into the output CSV files for transparent data provenance.
+"	Grouped Bar Chart Generation: Creates a high-quality, grouped bar chart with error bars (standard deviation) using matplotlib, enabling visual comparison of energy terms across different structural groups and metal centers.
+"	Customizable Plotting: Supports customization of the plotted metrics, y-axis limits, titles, and colors.
+"	Mathtext/LaTeX Support: The generated plot uses Mathtext (LaTeX-like syntax) for professional labeling of the axes, legends, and categories (e.g., using $\mathrm{Fe}^{3+}$ and $E(\mathrm{elec})$).
+________________________________________
+Input File Requirements
+The script expects a set of CSV files to be present in the execution directory (or the directory specified in analyze_and_combine_csvs).
+1. File Naming Convention
+The core functionality relies on a specific filename structure that encodes the simulation parameters. The script's SEARCH_CONFIGS suggests that filenames must contain key identifiers for:
+"	Metal Center/System: E.g., _FE_, _GA_, _FEGA_, _GAFE_.
+"	Amino Acid/Residue ID: E.g., 104 (Arg), 107 (Trp), 108 (His-$\alpha$), 270 (His-$\beta$).
+"	Interaction/State: E.g., 1481, 1483 (HEM state), 1482, 1484 (Fe/Ga state).
+"	Common Identifier: E.g., HH.
+2. CSV Data Structure
+The input CSV files must contain columns representing the calculated energy terms. The script specifically looks for the following columns (case-sensitive):
+"	LIE_00001[EELEC] (Electrostatic Energy)
+"	LIE_00001[EVDW] (Van der Waals Energy)
+"	[ETOTAL] (Total Energy)
+Note: The script includes logic to try and use the short names ([EELEC], [EVDW]) if the LIE_00001 prefix is missing, ensuring some flexibility.
+________________________________________
+Output Files
+The script generates two main types of output files in the same directory:
+1. Aggregated Statistics CSVs
+"	Filename Format: [AND-terms]_[OR-groups]_[NOT-terms]_STATS.csv
+o	Example: AND-HH_OR1-FE_FEGA_OR2-104_844_OR3-1481_1483_STATS.csv
+"	Structure: The file contains all the raw, combined data from the filtered input CSVs.
+"	Header: The file is prepended with commented lines (#) detailing:
+o	The GROUP NAME (e.g., Fe-FeGa_ARG_HEM).
+o	The Applied Criteria (AND, OR, NOT groups).
+o	The STATS line, which contains pipe-separated (|) key-value pairs of the calculated Mean and Std (standard deviation) for each metric (e.g., # STATS: [EELEC] Mean = -100.1234 | [EELEC] Std = 10.5500).
+2. Visualization Image
+"	Filename: Combined_Energy_Analysis_Plot.png
+"	Content: A high-resolution grouped bar chart that visually compares the mean energy values (with standard deviation error bars) for the configured metrics (METRICS_TO_PLOT) across all defined PLOT_GROUPS.
+________________________________________
+Configuration Variables (0. GLOBAL CONFIGURATION)
+The script's behavior is controlled by variables at the top of the file:
+Variable	Description	Options
+LIGANDS	List of primary metal centers used to identify and color groups.	['Fe', 'Ga']
+METRICS_TO_PLOT	Energy terms to be included in the final bar chart.	['[EELEC]', '[EVDW]', '[ETOTAL']
+Y_LIMITS	Defines the minimum and maximum energy for the Y-axis. Set to None for automatic scaling.	[-155, 45] (Energy in kcal/mol)
+PLOT_TITLE	The title displayed above the generated chart.	String
+Y_AXIS_LABEL	The label for the Y-axis.	String
+COLORS	A dictionary mapping the full metric key (e.g., 'Fe[EELEC]') to its hex color code for consistent plotting.	Hex codes
+
+
