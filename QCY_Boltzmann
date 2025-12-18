@@ -96,11 +96,6 @@ def table_style(df):
 styled_df_energy = table_style(df_energy)
 styled_df_population = table_style(df_population)
 
-# Display both tables in Jupyter
-from IPython.display import display
-display(styled_df_energy)
-display(styled_df_population)
-
 # Save tables as HTML
 styled_df_energy.to_html("energy_table.html")
 styled_df_population.to_html("population_table.html")
