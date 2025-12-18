@@ -8,8 +8,8 @@ import numpy as np
 # --- Función para transformar etiquetas ---
 def transformar_etiqueta(nombre):
     """
-    Si la etiqueta contiene '->', convierte la flecha en '→' y pone en negrita
-    la pose de llegada (lo que va después de la flecha).
+    Si la etiqueta contiene '->', convierte la flecha en '→' y pone en negrita 
+    la pose de llegada.
     """
     if '->' in nombre:
         origen, destino = nombre.split('->', 1)
@@ -21,9 +21,7 @@ def transformar_etiqueta(nombre):
         return nombre
 
 # --- Cargar CSV y validar estructura ---
-
 csv_path = input("Paste the full path of the .csv with the data: ").strip('"')
-
 energy_dictionary = {}
 population_dictionary = {}
 
@@ -40,14 +38,13 @@ with open(csv_path, mode="r", encoding="utf8") as archive:
         first_line_splitted[4] == "Relative_Population_Error"
     ]
 
-    # Validate header structure
     if all(checks):
         print("The .csv structure seems to be correct.")
     else:
         raise ValueError("""
-The .csv structure is incorrect. Please ensure the header is exactly:
-"Name,Energy_{units},Energy_Error_{units},Relative_Population,Relative_Population_Error"
-""")
+        The .csv structure is incorrect. Please ensure the header is exactly:
+        "Name,Energy_{units},Energy_Error_{units},Relative_Population,Relative_Population_Error"
+        """)
 
     # Extract and validate units
     units_from_energy = first_line_splitted[1].split("_")[1]
@@ -60,48 +57,13 @@ The .csv structure is incorrect. Please ensure the header is exactly:
         raise ValueError("Mismatch between Energy and Energy_Error units. Please fix the header.")
 
 # --- Leer datos y crear diccionarios ---
-
 with open(csv_path, mode="r", encoding="utf-8") as archive:
     reader = csv.DictReader(archive)
     for line in reader:
         energy_dictionary[line["Name"]] = [line[f"Energy_{units}"], line[f"Energy_Error_{units}"]]
         population_dictionary[line["Name"]] = [line["Relative_Population"], line["Relative_Population_Error"]]
 
-# --- Crear DataFrames y estilos de tablas ---
-
-df_energy = pd.DataFrame.from_dict(
-    energy_dictionary, 
-    orient='index', 
-    columns=[f'Energy ({units})', f'Energy Error ({units})']
-)
-
-df_population = pd.DataFrame.from_dict(
-    population_dictionary, 
-    orient='index', 
-    columns=['Relative Population (%)', 'Relative Population Error']
-)
-
-def table_style(df):
-    return df.style.set_table_styles(
-        [
-            {'selector': 'thead th', 'props': [('background-color', '#f0f0f0'), ('font-weight', 'bold'), ('text-align', 'center')]},
-            {'selector': 'tbody td', 'props': [('text-align', 'center'), ('font-size', '12pt')]},
-            {'selector': 'table', 'props': [('border-collapse', 'collapse'), ('width', '100%')]},
-            {'selector': 'tbody tr:nth-child(even)', 'props': [('background-color', '#f9f9f9')]},
-            {'selector': 'tbody tr:nth-child(odd)', 'props': [('background-color', 'white')]},
-            {'selector': 'td, th', 'props': [('border', '1px solid #ddd'), ('padding', '8px')]},
-        ]
-    )
-
-styled_df_energy = table_style(df_energy)
-styled_df_population = table_style(df_population)
-
-# Save tables as HTML
-styled_df_energy.to_html("energy_table.html")
-styled_df_population.to_html("population_table.html")
-
 # --- Preparar datos para gráficas ---
-
 sorted_names = sorted(energy_dictionary.keys(), key=lambda x: float(energy_dictionary[x][0]))
 x = np.arange(len(sorted_names))
 
@@ -115,38 +77,68 @@ colors_population = plt.cm.Greens(np.linspace(0.9, 0.3, len(sorted_names)))
 # --- Generar etiquetas transformadas ---
 x_labels = [transformar_etiqueta(name) for name in sorted_names]
 
+# ### NEW: Función auxiliar para anotar barras ###
+def annotate_bars(ax, bars, font_size=10):
+    """
+    Añade el porcentaje exacto encima de cada barra.
+    """
+    # Ajustar límite Y para que quepa el texto (15% más que la barra más alta)
+    max_height = max([b.get_height() for b in bars]) if bars else 0
+    current_ylim = ax.get_ylim()
+    ax.set_ylim(current_ylim[0], max(current_ylim[1], max_height * 1.15))
+    
+    for bar in bars:
+        height = bar.get_height()
+        # Evitar etiquetar si es 0 o muy cercano a 0 para no ensuciar, o etiquetar siempre
+        if height > 0.01: 
+            ax.annotate(f'{height:.1f}%',
+                        xy=(bar.get_x() + bar.get_width() / 2, height),
+                        xytext=(0, 3),  # 3 points vertical offset
+                        textcoords="offset points",
+                        ha='center', va='bottom',
+                        fontsize=font_size, fontweight='bold', color='black')
+
 # ---- 1. Gráfica combinada: dos subplots alineados ----
 fig, (ax_energy, ax_pop) = plt.subplots(
-    2, 1, 
-    figsize=(10, 8), 
-    sharex=True, 
+    2, 1, figsize=(10, 8), sharex=True, 
     gridspec_kw={'height_ratios': [1, 1.2]}
 )
 
-# --- Arriba: Energía (línea degradada + puntos) ---
+# --- Arriba: Energía ---
 points = np.array([x, energies]).T.reshape(-1, 1, 2)
 segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
 cmap = plt.get_cmap('Blues_r')
 colors = cmap(np.linspace(0.1, 0.7, len(segments)))
+
 lc = LineCollection(segments, colors=colors, linewidth=2, zorder=2)
 ax_energy.add_collection(lc)
 ax_energy.scatter(x, energies, color='red', zorder=3, label='Energy Points')
 ax_energy.errorbar(x, energies, yerr=energy_errors, fmt='none', ecolor='gray', capsize=5, elinewidth=1, zorder=1)
-ax_energy.set_ylabel(f"Energy ({units})", fontweight='bold', color='blue', fontsize=20)
-ax_energy.tick_params(axis='y', labelcolor='blue', labelsize=16)
-#ax_energy.set_title("Energy (top) and Population (bottom) per Structure | H2O", fontweight="bold", fontsize=16)
+
+ax_energy.set_ylabel(f"Energy ({units})", fontweight='bold', color='blue', fontsize=18)
+ax_energy.tick_params(axis='y', labelcolor='blue', labelsize=18)
 ax_energy.grid(False)
 
 # --- Abajo: Población (barras) ---
-ax_pop.bar(x, populations, yerr=population_errors, capsize=5, color=colors_population, edgecolor='black')
-ax_pop.set_xlabel("QCy(MeBT)₃ conformer", fontweight='bold', fontsize=20)
-ax_pop.set_ylabel("Relative Population (%)", fontweight='bold', color='green', fontsize=20)
-ax_pop.tick_params(axis='y', labelcolor='green', labelsize=16)
+# ### NEW: Capturamos el objeto 'bars' para anotar ###
+bars = ax_pop.bar(x, populations, yerr=population_errors, capsize=5, color=colors_population, edgecolor='black')
+
+# ### NEW: Llamada a la función de anotación ###
+annotate_bars(ax_pop, bars, font_size=14)
+
+ax_pop.set_xlabel("QCy(MeBT)₃ conformer", fontweight='bold', fontsize=18)
+ax_pop.set_ylabel("Relative Population (%)", fontweight='bold', color='green', fontsize=18)
+ax_pop.tick_params(axis='y', labelcolor='green', labelsize=18)
 ax_pop.set_xticks(x)
-ax_pop.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=14)  ##Si no hay cambio conformacional, aquí -> fontweight="bold"
+
+# ### NEW: Ajuste de padding en las etiquetas del eje X ###
+ax_pop.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=18)
+ax_pop.tick_params(axis='x', which='major', pad=12) # Da más espacio a las etiquetas
+
 ax_pop.grid(False)
 
-# --- Ocultar el borde inferior de la gráfica superior y el borde superior de la gráfica inferior ---
+# --- Ocultar bordes ---
 ax_energy.spines['bottom'].set_visible(False)
 ax_pop.spines['top'].set_visible(False)
 ax_energy.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
@@ -155,15 +147,22 @@ plt.tight_layout()
 plt.savefig("combined_subplot.png", dpi=300)
 plt.show()
 
-# ---- 2. Gráficas sueltas (siguen estando disponibles) ----
+# ---- 2. Gráficas sueltas ----
 
 # Gráfica solo de poblaciones
-plt.figure(figsize=(9, 6))
-plt.bar(x, populations, yerr=population_errors, capsize=5, color=colors_population, edgecolor='black')
-plt.xlabel("QCy(MeBT)₃ conformer", fontweight="bold", fontsize=20)
-plt.ylabel("Relative Population (%)", fontweight="bold", fontsize=20)
-plt.title("Relative Population", fontweight="bold", fontsize=20)
-plt.xticks(x, x_labels, rotation=45, ha='right', fontsize=16) ##Si no hay cambio conformacional, aquí -> fontweight="bold"
+fig_pop, ax_single_pop = plt.subplots(figsize=(9, 6)) # Usar subplots es más seguro para manipular ejes
+bars_single = ax_single_pop.bar(x, populations, yerr=population_errors, capsize=5, color=colors_population, edgecolor='black')
+
+# ### NEW: Anotar también la gráfica individual ###
+annotate_bars(ax_single_pop, bars_single, font_size=12)
+
+ax_single_pop.set_xlabel("QCy(MeBT)₃ conformer", fontweight="bold", fontsize=20)
+ax_single_pop.set_ylabel("Relative Population (%)", fontweight="bold", fontsize=20)
+ax_single_pop.set_title("Relative Population", fontweight="bold", fontsize=20)
+ax_single_pop.set_xticks(x)
+ax_single_pop.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=16)
+ax_single_pop.tick_params(axis='x', which='major', pad=10)
+
 plt.tight_layout()
 plt.savefig("population_plot.png", dpi=300)
 plt.show()
@@ -173,11 +172,16 @@ fig, ax = plt.subplots(figsize=(9, 6))
 ax.add_collection(LineCollection(segments, colors=colors, linewidth=2))
 ax.scatter(x, energies, color='red', zorder=3, label='Energy Points')
 ax.errorbar(x, energies, yerr=energy_errors, fmt='none', ecolor='gray', capsize=5, elinewidth=1, zorder=2)
+
 ax.set_xticks(x)
-ax.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=16) ##Si no hay cambio conformacional, aquí -> fontweight="bold"
+ax.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=16)
+ax.tick_params(axis='x', which='major', pad=10) # Padding extra
+
 ax.set_xlabel("QCy(MeBT)₃ conformer", fontweight='bold', fontsize=20)
-ax.set_ylabel(f"Energy ({units})", fontweight='bold, fontsize=20')
-ax.set_title("Energy Comparison with Gradient Line and Error Bars")
+# Corregido pequeño error de string en tu código original ('bold, fontsize...)
+ax.set_ylabel(f"Energy ({units})", fontweight='bold', fontsize=20) 
+ax.set_title("Energy Comparison", fontweight='bold', fontsize=16)
+
 plt.tight_layout()
 plt.savefig("energy_plot.png", dpi=300)
 plt.show()
